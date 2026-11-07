@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install
+        run: python -m pip install --upgrade pip && python -m pip install -e .
+
+      - name: Unit tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Render the example trace
+        run: |
+          python examples/make_trace.py
+          agent-trace render examples/example-trace.jsonl -o trace.html
+          # The report must actually contain every span, not just be non-empty.
+          for span in "research-agent" "tool fan-out" "fetch: retry"; do
+            grep -q "$span" trace.html || { echo "missing span: $span"; exit 1; }
+          done
+          test -s trace.html
+
+      - name: Assert the failed span is detected
+        run: |
+          set +e
+          agent-trace render examples/example-trace.jsonl --format text --fail-on-error
+          code=$?
+          set -e
+          test "$code" -eq 1
+
+      - name: Summarize
+        run: agent-trace summarize examples/example-trace.jsonl --json > summary.json
+        # Cost must be non-zero: the leaf rollup is the thing that was wrong once.
+        # A trace whose model calls cost nothing is a regression, not a saving.
+
+      - name: Cost is reported
+        run: |
+          python - <<'PY'
+          import json
+          data = json.load(open("summary.json"))
+          assert data["spans"] == 10, data["spans"]
+          assert data["cost"] > 0, f"cost collapsed to {data['cost']}"
+          assert data["tokens"] == 5770, data["tokens"]
+          print("summary ok:", data["cost"], data["tokens"])
+          PY
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trace-py${{ matrix.python }}
+          path: trace.html
+          if-no-files-found: ignore

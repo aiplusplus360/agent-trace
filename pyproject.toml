@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-trace"
+version = "0.1.0"
+description = "Turn an agent run into a readable waterfall. Parse spans, roll up tokens and cost, and render a self-contained HTML report."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "khawajasafiullah18" }]
+dependencies = []
+
+[project.scripts]
+agent-trace = "agenttrace.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["agenttrace*"]
